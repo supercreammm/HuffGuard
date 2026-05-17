@@ -3,13 +3,26 @@ from tkinter import filedialog, messagebox
 import subprocess
 import os
 import threading  # 引入多執行緒模組
-import time;
+import time
+import sys        # 補上 sys 模組，用以實現高強健性的實體路徑探測
 
 # ================= 系統外觀設定 =================
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
-ENGINE_EXE = "main.exe"
+# ================= [關鍵修正] 建立高強健性的動態路徑定址 =================
+# 解決當工程師移動專案至 GitHub 資料夾，或變更終端機工作路徑時的核心引擎遺失問題
+if getattr(sys, 'frozen', False):
+    # 若未來使用 PyInstaller 等工具封裝成獨立執行檔
+    CURRENT_DIR = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    # 常態開發與除錯階段（執行 .py 原始碼）
+    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+ENGINE_EXE_NAME = "main.exe"
+# 將腳本所在目錄與 C++ 執行檔名稱黏合，自主推導出絕對路徑
+ENGINE_EXE_PATH = os.path.join(CURRENT_DIR, ENGINE_EXE_NAME)
+
 
 def select_file():
     filepath = filedialog.askopenfilename(title="選擇目標檔案")
@@ -62,9 +75,9 @@ def engine_worker(mode, input_file, key):
         # --- 1. 按下碼錶開始計時 ---
         start_time = time.time() 
 
-        # 呼叫 C++ 引擎 (只保留這裡呼叫一次！)
+        # 呼叫 C++ 引擎（修正：直接帶入絕對路徑變數 ENGINE_EXE_PATH，移除易受環境干擾的 "./"）
         result = subprocess.run(
-            [f"./{ENGINE_EXE}", mode, input_file, output_file, key],
+            [ENGINE_EXE_PATH, mode, input_file, output_file, key],
             capture_output=True, check=True
         )
         
@@ -83,7 +96,9 @@ def engine_worker(mode, input_file, key):
         err_text = e.stderr.decode('utf-8', errors='replace')
         root.after(0, on_engine_finish, False, None, None, f"底層運算失敗：\n{err_text}")
     except FileNotFoundError:
-        root.after(0, on_engine_finish, False, None, None, f"找不到 {ENGINE_EXE}！\n請確保 C++ 執行檔與此程式放在同一目錄下。")
+        # 修正：在錯誤提示中直接秀出系統預期尋找的完整物理路徑，方便工程師除錯
+        root.after(0, on_engine_finish, False, None, None, 
+                        f"找不到核心引擎！\n\n預期搜尋路徑：\n{ENGINE_EXE_PATH}\n\n請確保 C++ 執行檔 main.exe 與本 Python 腳本放置於同一個資料夾目錄中。")
     except Exception as e:
         root.after(0, on_engine_finish, False, None, None, f"發生未知的系統錯誤：\n{str(e)}")
 
